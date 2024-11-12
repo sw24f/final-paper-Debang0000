@@ -1,0 +1,157 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{natbib}
+
+\usepackage[colorlinks=true, citecolor=blue]{hyperref}
+
+\title{First Draft: Recidivism Forecasting: Comparing Logistic Regression, LASSO, and Random Forest Models}
+\author{Debang Ou\\
+  University of Connecticut
+}
+\begin{document}
+\maketitle
+
+\section{Introduction}
+Recidivism, the tendency of individuals who have served time to reoffend, has been a critical issue in the criminal justice system. High recidivism rates pose a challenge to public safety and impact rehabilitation efforts to help individuals reintegrate into society. Research shows that nearly two-thirds of people released from prison in the United States are rearrested within three years \citep{Durose2014}, highlighting the urgent need for improved predictive models to guide the implementation of interventions. By accurately identifying individuals at higher risk of recidivism, predictive models can enhance decision-making on probation, parole, and rehabilitation, ultimately reducing recidivism rates \citep{Berk2009}.
+
+Although traditional statistical models such as logistic regression have been widely used to predict recidivism, these models often fall short in capturing the complex nonlinear relationships between risk factors and outcomes \citep{James2013}. Additionally, recent research has raised questions about the fairness of recidivism prediction models because these tools may inadvertently reinforce biases based on race, socioeconomic status, and other factors \citep{Angwin2016, Chouldechova2017}. Machine learning techniques (such as LASSO and random forests) offer new possibilities that can improve prediction performance through feature selection and nonlinear interactions \citep{Hastie2015}. However, it is currently unclear how these advanced models compare to simpler models in terms of predictive accuracy and fairness. Existing research often focuses on the predictive accuracy of models, but few comprehensive analyses balance accuracy and fairness in recidivism prediction \citep{Berk2018}.
+
+This study aims to fill this gap by systematically comparing the predictive capabilities of three models (logistic regression, LASSO, and random forests) on a large recidivism data set. Specifically, we explore the following questions: (1) How accurate and fair are these models in predicting recidivism? (2) Can advanced models like LASSO and Random Forest significantly improve prediction performance without exacerbating bias? 
+
+The remainder of this article is structured as follows. We first provide a detailed description of the data used in our study, focusing on key features relevant to the prediction of recidivism. Next, the research methodology is described, including the specific metrics used to evaluate the accuracy and fairness of each model. In the results section, we present and analyze the performance of each model. Finally, we delve into the implications of the results for policy development, limitations of the study in the Discussion section.
+
+
+\section{Data}
+
+This study uses data from the Georgia Prison Recidivism Prediction Dataset, provided by the National Institute of Justice (NIJ). The dataset includes records for approximately 26,000 individuals who were released on parole under the supervision of the Georgia Department of Community Supervision (GDCS) between January 1, 2013, and December 31, 2015. 
+
+\subsection{Data Content}
+Key attributes in the dataset include:
+
+\begin{itemize}
+    \item \textbf{Demographic Information}: Basic demographic information includes \texttt{Gender}, \texttt{Race}, and \texttt{Age\_at\_Release}. The \texttt{Residence\_PUMA} column indicates the geographical area of residence, and \texttt{Gang\_Affiliated} reflects any recorded gang affiliation.
+    
+    \item \textbf{Supervision and Risk Scores}: \texttt{Supervision\_Risk\_Score\_First} and \texttt{Supervision\_Level\_First} provide details on each individual’s risk assessment and supervision level at the time of release.
+    
+    \item \textbf{Education and Family Structure}: \texttt{Education\_Level} describes the highest education level attained, and \texttt{Dependents} captures the family responsibility, both of which are potential factors influencing recidivism risk.
+    
+    \item \textbf{Criminal History}: Numerous fields track prior arrests and convictions, broken down by type:
+    \begin{itemize}
+        \item Felony offenses (\texttt{Prior\_Arrest\_Episodes\_Felony}, \texttt{Prior\_Conviction\_Episodes\_Felony})
+        \item Misdemeanor, violent, drug-related, and property-related offenses
+        \item Probation and parole violations, domestic violence, and gun charges
+    \end{itemize}
+    
+    \item \textbf{Supervision Conditions and Violations}: Supervision violation data includes variables such as \texttt{Violations\_ElectronicMonitoring}, \texttt{Violations\_FailToReport}, and \texttt{Violations\_MoveWithoutPermission}. Additional fields capture conditions for participation in mental health, substance abuse, and cognitive education programs (\texttt{Condition\_MH\_SA}, \texttt{Condition\_Cog\_Ed}).
+    
+    \item \textbf{Program Engagement and Employment}: Engagement in assigned programs is recorded in \texttt{Program\_Attendances} and \texttt{Program\_UnexcusedAbsences}, while employment data, such as \texttt{Percent\_Days\_Employed} and \texttt{Jobs\_Per\_Year}, reflects economic stability during supervision.
+    
+    \item \textbf{Drug Testing Results}: Positive results for THC, cocaine, methamphetamine, and other substances are recorded in columns such as \texttt{DrugTests\_THC\_Positive}, \\\texttt{DrugTests\_Cocaine\_Positive}, and \texttt{DrugTests\_Meth\_Positive}.
+    
+    \item \textbf{Recidivism Outcomes}: The variable \texttt{Recidivism\_Within\_3years} indicates any recidivism within three years, while year-specific indicators (\texttt{Recidivism\_Arrest\_Year1}, \texttt{Recidivism\_Arrest\_Year2}, \texttt{Recidivism\_Arrest\_Year3}) track the timing of reoffenses.
+\end{itemize}
+
+
+
+\subsection{Data Sources}
+This dataset is collaboratively provided by GDCS and the Georgia Bureau of Investigation (GBI). Data from GDCS includes demographic details, information on incarceration and parole cases, prior community supervision history, probation and parole conditions (as set by the Board of Pardons and Paroles), and records of supervision activities (such as violation records, drug testing, program participation, employment, residential moves, and accumulated reports of violations for breaking parole conditions). The GBI’s data comes from the Georgia Crime Information Center (GCIC) statewide criminal history database. The GCIC database records an individual's arrest and conviction history prior to incarceration, detailing each arrest incident with the most serious charge. Certain offenses, like domestic violence or firearms violations, include all relevant charges. Additionally, GCIC data provides a measure of recidivism, capturing any new felony or misdemeanor arrests within three years of starting parole supervision.
+
+\subsection{Data Preprocessing}
+To prepare the data for modeling, the following preprocessing steps were conducted to enhance data quality, ensure compatibility with chosen models, and prevent data leakage:
+\begin{itemize}
+    \item \textbf{Removed Non-Predictive Columns:} Columns such as \texttt{ID}, \texttt{Recidivism\_Arrest\_Year1}, \texttt{Recidivism\_Arrest\_Year2}, \texttt{Recidivism\_Arrest\_Year3}, and \texttt{Training\_Sample} were removed. These columns were either identifiers or specific to training, and therefore irrelevant to prediction.
+    \item \textbf{Categorical Conversion:} Columns representing categorical information, such as \texttt{Gender}, \texttt{Race}, \texttt{Age\_at\_Release}, \texttt{Residence\_PUMA}, \texttt{Gang\_Affiliated}, \texttt{Supervision\_Level\_First}, \texttt{Education\_Level}, \texttt{Dependents}, and \texttt{Prison\_Offense}, were converted to categorical types to prepare them for encoding.
+    \item \textbf{Handling Missing Values:} Missing values in numerical columns were filled with the mean value, while categorical columns were filled with the mode (most frequent value), preserving the distribution of the data.
+    \item \textbf{Encoding Categorical Variables:} Categorical variables were one-hot encoded to enable their use in models requiring numerical input.
+    \item \textbf{Feature Scaling:} All numerical features were standardized using z-score normalization, a necessary step for Logistic Regression and LASSO, which are sensitive to scale.
+    \item \textbf{Adding Interaction Terms:} For the Logistic Regression model, interaction terms were included to capture combined effects between variable pairs, thus enhancing the model’s ability to capture complex relationships.
+\end{itemize}
+
+These preprocessing steps ensure that each feature is optimized for use in the modeling process, reducing noise and improving interpretability.
+
+\section{Methods}
+
+To compare the effectiveness of different modeling approaches, we implemented three models: Logistic Regression with interaction terms, LASSO, and Random Forest. Each model has distinct strengths in capturing linear and non-linear relationships, as well as handling feature selection.
+
+\subsection{Model Selection}
+\begin{itemize}
+    \item \textbf{Logistic Regression with Interaction Terms:} This model allows us to examine relationships between predictor variables and recidivism through a linear model with interaction terms. Interaction terms were added to capture potential combined effects between predictors, as they can often reveal deeper insights into factors influencing recidivism.
+    \item \textbf{LASSO:} LASSO, or Least Absolute Shrinkage and Selection Operator, applies regularization to feature selection, reducing model complexity and enhancing interpretability by penalizing coefficients of less significant features.
+    \item \textbf{Random Forest:} Random Forest, an ensemble model, combines multiple decision trees and aggregates their outputs. This model effectively handles non-linear relationships and is less susceptible to overfitting due to its voting-based approach across multiple decision trees.
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+To assess model performance, we used the following metrics:
+\begin{itemize}
+    \item \textbf{Mean Accuracy and ROC AUC:} These metrics provide an overview of model accuracy and discriminatory ability. ROC AUC, specifically, measures the models’ ability to distinguish between recidivists and non-recidivists.
+    \item \textbf{False Positive Rate (FPR) and False Negative Rate (FNR):} In a criminal justice context, FPR indicates the rate at which non-recidivists are incorrectly classified as recidivists, while FNR measures the rate at which recidivists are misclassified as non-recidivists. Both rates are crucial in evaluating fairness and the potential social impact of model predictions.
+\end{itemize}
+
+\subsection{Model Performance and Interpretation}
+Table~\ref{tab:model_performance} summarizes the performance of each model based on the outlined evaluation metrics.
+
+\begin{table}[h!]
+    \centering
+    \caption{Model Performance Comparison}
+    \begin{tabular}{lcccc}
+        \toprule
+        Model & Mean Accuracy & Mean ROC AUC & FPR & FNR \\
+        \midrule
+        Logistic Regression with Interactions & 0.610 & 0.642 & 0.432 & 0.358 \\
+        LASSO & 0.709 & 0.690 & 0.443 & 0.176 \\
+        Random Forest & 0.730 & 0.793 & 0.414 & 0.161 \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:model_performance}
+\end{table}
+
+\paragraph{Interpretation}
+The results demonstrate distinct strengths and limitations across the models:
+\begin{itemize}
+    \item \textbf{Logistic Regression with Interactions:} With a mean accuracy of 0.610 and ROC AUC of 0.642, Logistic Regression shows relatively low predictive performance, likely due to its linear nature and limited capacity to capture complex non-linear interactions between risk factors. The FPR and FNR rates indicate higher misclassification of recidivists and non-recidivists, posing concerns for real-world application.
+    \item \textbf{LASSO:} LASSO achieves a higher mean accuracy of 0.709 and ROC AUC of 0.690, demonstrating improved performance over Logistic Regression by leveraging feature selection. However, its FPR remains similar to Logistic Regression’s, while its FNR is largely reduced, indicating improved identification of recidivists.
+    \item \textbf{Random Forest:} With the highest accuracy (0.730) and ROC AUC (0.793), Random Forest outperforms the other models in predictive performance. Its relatively low FPR and FNR show a balanced performance, reducing both types of classification errors, making it the most reliable model in terms of accuracy and fairness.
+\end{itemize}
+
+These results suggest that Random Forest may be the most effective model for recidivism prediction, offering both accuracy and reduced bias.
+
+\section{Discussion and Conclusion}
+
+This study contributes to the field of recidivism forecasting by comparing three modeling approaches—Logistic Regression with interaction terms, LASSO, and Random Forest—using a large and detailed dataset from the Georgia Department of Community Supervision. The findings indicate that the Random Forest model outperforms the other models in terms of predictive accuracy and discriminatory power, offering a more nuanced capture of non-linear relationships in recidivism risk factors. These results underscore the potential of machine learning models to improve decision-making within the criminal justice system, particularly by enabling a more accurate identification of individuals at high risk of reoffending.
+
+\subsection{Research Questions and Key Findings}
+
+The research questions posed in the introduction were addressed as follows:
+\begin{itemize}
+    \item \textbf{How accurate and fair are Logistic Regression, LASSO, and Random Forest models in predicting recidivism?} Our results show that Random Forest provides the highest accuracy and ROC AUC, followed by LASSO, with Logistic Regression showing lower performance. Random Forest also demonstrated a balance in reducing both False Positive and False Negative rates, making it the most promising model in terms of both accuracy and fairness.
+    \item \textbf{Can advanced models like LASSO and Random Forest improve prediction performance without exacerbating bias?} The study suggests that machine learning models like Random Forest, while highly accurate, require careful consideration of fairness metrics. Though Random Forest showed strong predictive power, its use in practical applications must include measures to monitor and mitigate potential biases, especially those arising from systemic factors within the dataset.
+\end{itemize}
+
+\subsection{Limitations of the Study}
+
+While the findings provide valuable insights, several limitations should be acknowledged:
+\begin{itemize}
+    \item \textbf{Lack of Fine-Tuning for Models}: The models used in this study were not fine-tuned extensively due to computational limitations. Hyperparameter optimization, particularly for complex models like Random Forest, could potentially enhance performance further and may reveal different patterns in predictive accuracy or fairness.
+    \item \textbf{Limited Cross-Validation Splits}: We applied a limited number of splits in Monte Carlo cross-validation, again due to constraints in computational resources. A higher number of splits would provide a more robust evaluation of model generalizability and performance, reducing variability in the metrics reported.
+\end{itemize}
+
+These limitations suggest that future studies should focus on optimizing model parameters and increasing the number of cross-validation splits to obtain more refined and reliable results.
+
+\subsection{Future Research Directions}
+
+Building on this study, future research could investigate additional machine learning algorithms, such as gradient boosting or hybrid models, which may further enhance predictive accuracy while managing model interpretability and fairness. There is also a need for fairness-aware machine learning methods that incorporate fairness as a central criterion alongside accuracy. Such methods could help ensure that predictive models do not inadvertently reinforce systemic biases, especially in the criminal justice system. Furthermore, analyzing the impact of individual features—such as employment stability or gang affiliation—on recidivism risk could inform the design of targeted intervention programs aimed at reducing reoffense rates.
+
+\subsection{Conclusion}
+
+In summary, this study highlights the potential of machine learning models, particularly Random Forest, in forecasting recidivism. The comparative analysis shows that Random Forest achieves superior predictive performance while maintaining relatively balanced error rates. However, the use of machine learning in recidivism prediction must be approached with a strong emphasis on fairness and ethical considerations. By addressing limitations in model fine-tuning and cross-validation, and by exploring fairness-aware algorithms, future research can further advance the field of recidivism forecasting, eventually contributing to a more equitable and effective criminal justice system.
+
+
+
+\bibliography{refs}
+\bibliographystyle{chicago}
+
+\end{document}
